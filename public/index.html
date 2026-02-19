@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Namkeen Bazaar Dashboard</title>
+<style>
+body { margin:0; font-family:Segoe UI; background:#f3f4f6; }
+
+/* Header */
+header {
+    background:#dc2626;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:15px 20px;
+    border-radius:0 0 10px 10px;
+}
+header h1 {
+    margin:0;
+    font-weight:bold;
+    font-size:36px; /* large font size */
+    color:white;
+    white-space:nowrap;
+}
+header button {
+    padding:6px 12px;
+    border:none;
+    border-radius:5px;
+    background:#ef4444;
+    color:white;
+    cursor:pointer;
+}
+
+/* Container */
+.container { padding:20px; }
+
+/* Summary Cards */
+.summary { display:flex; gap:20px; margin-bottom:20px; }
+.card { flex:1; padding:15px; border-radius:10px; color:white; text-align:center; }
+.blue {background:#2563eb;} .green {background:#16a34a;} .orange {background:#ea580c;}
+
+/* Update Panel */
+.update-panel { background:white; padding:15px; border-radius:10px; margin-bottom:20px; box-shadow:0 3px 8px rgba(0,0,0,0.1);}
+.update-panel select, .update-panel input { padding:6px; margin-right:10px; }
+button.update-btn{background:#16a34a;color:white;} 
+button.download-btn{background:#2563eb;color:white;} 
+button.add-btn{background:#f59e0b;color:white;}
+
+/* Table */
+table{width:100%; border-collapse:collapse; background:white; margin-top:20px;}
+th,td{padding:8px; border-bottom:1px solid #ddd; text-align:center;}
+th{background:#1f2937;color:white;}
+
+/* Cubes */
+.cube-container{margin-top:30px; display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:20px;}
+.cube{padding:15px; border-radius:12px; color:white;}
+
+/* Login Panel */
+#loginPanel { padding:20px; background:white; max-width:400px; margin:auto; margin-top:50px; text-align:center; }
+#loginPanel input { padding:6px; margin:5px 0; width:80%; }
+#loginPanel button { padding:6px 12px; margin-top:10px; border:none; border-radius:5px; background:#2563eb; color:white; cursor:pointer; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1 id="companyTitle" style="display:none;">Namkeen Bazaar</h1>
+  <button id="logoutBtn" onclick="logoutUser()" style="display:none;">Logout</button>
+</header>
+
+<!-- Login Panel -->
+<div id="loginPanel">
+  <h3>Login</h3>
+  <input type="text" id="loginUsername" placeholder="Username"><br>
+  <input type="password" id="loginPassword" placeholder="Password"><br>
+  <button onclick="loginUser()">Login</button>
+</div>
+
+<!-- Dashboard -->
+<div id="dashboard" style="display:none;">
+<div class="container">
+
+<!-- Summary Cards -->
+<div class="summary">
+<div class="card blue"><h4>Total Items</h4><h2 id="totalItems">0</h2></div>
+<div class="card green"><h4>Total Remaining Qty</h4><h2 id="totalQty">0</h2></div>
+<div class="card orange"><h4>Total Stock Value ₹</h4><h2 id="totalValue">₹ 0</h2></div>
+</div>
+
+<!-- Update Inventory Panel (Admin only) -->
+<div class="update-panel" id="updatePanel">
+<h4>Update Inventory</h4>
+<select id="itemSelect"></select>
+<label>Add Qty:</label><input type="number" id="addQty" placeholder="0">
+<label>New Rate:</label><input type="number" id="newRate" placeholder="optional">
+<button class="update-btn" onclick="updateItem()">Update</button>
+<button class="download-btn" onclick="downloadExcel()">Download Excel</button>
+<button class="add-btn" onclick="showAddNewItem()">Add New Item</button>
+
+<div id="newItemRow" style="margin-top:10px; display:none;">
+<input type="number" id="newSr" placeholder="SR No">
+<input type="text" id="newName" placeholder="Name">
+<input type="number" id="newQty" placeholder="Qty">
+<input type="number" id="newRateInput" placeholder="Rate">
+<input type="number" id="newRemain" placeholder="Remaining Qty">
+<button class="update-btn" onclick="addNewItem()">Add</button>
+</div>
+</div>
+
+<!-- Sell Items Panel -->
+<div class="update-panel">
+<h4>Sell Items</h4>
+<table>
+<thead>
+<tr>
+<th>Select</th>
+<th>Item Name</th>
+<th>Remaining Qty</th>
+<th>Sell Qty</th>
+</tr>
+</thead>
+<tbody id="sellTableBody"></tbody>
+</table>
+<button class="update-btn" onclick="sellItems()">Sell Selected</button>
+</div>
+
+<!-- Inventory Table -->
+<table>
+<thead>
+<tr>
+<th>SR No</th><th>Name</th><th>Total Qty</th><th>Rate (₹)</th><th>Remaining</th>
+</tr>
+</thead>
+<tbody id="tableBody"></tbody>
+</table>
+
+<h3>SR No Cubes</h3>
+<div class="cube-container" id="cubeContainer"></div>
+
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+let inventory = [];
+let userRole = null;
+const colors = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6","#f97316"];
+
+// LOGIN
+async function loginUser(){
+    const username = document.getElementById("loginUsername").value;
+    const password = document.getElementById("loginPassword").value;
+
+    try{
+        const res = await fetch("http://localhost:5050/login",{
+            method:"POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({ username, password })
+        });
+        if(res.status !== 200) { alert("Invalid credentials"); return; }
+
+        const data = await res.json();
+        userRole = data.role;
+
+        document.getElementById("loginPanel").style.display="none";
+        document.getElementById("dashboard").style.display="block";
+
+        // Show header and logout
+        document.getElementById("companyTitle").style.display="block";
+        document.getElementById("logoutBtn").style.display="block";
+
+        // Hide Update panel if not admin
+        if(userRole !== "admin"){
+            document.getElementById("updatePanel").style.display="none";
+        }
+
+        loadInventory();
+
+    }catch(err){ console.error(err); }
+}
+
+// LOGOUT
+function logoutUser() {
+    userRole = null;
+    document.getElementById("dashboard").style.display = "none";
+    document.getElementById("loginPanel").style.display = "block";
+    document.getElementById("loginUsername").value = "";
+    document.getElementById("loginPassword").value = "";
+
+    // Hide header and logout
+    document.getElementById("companyTitle").style.display="none";
+    document.getElementById("logoutBtn").style.display="none";
+
+    document.getElementById("updatePanel").style.display = "block"; // reset for next admin
+}
+
+// LOAD INVENTORY
+async function loadInventory() {
+    try {
+        const res = await fetch("http://localhost:5050/inventory");
+        inventory = await res.json();
+        populateDropdown();
+        renderAll();
+        renderSellTable();
+    } catch (err) { console.error(err); }
+}
+
+// Populate dropdown
+function populateDropdown() {
+    const select = document.getElementById("itemSelect");
+    select.innerHTML = "";
+    inventory.forEach((item,index)=>{
+        select.innerHTML += `<option value="${index}">SR ${item.srNo} - ${item.namkeenVariety}</option>`;
+    });
+}
+
+// Show Add New Item
+function showAddNewItem(){ document.getElementById("newItemRow").style.display="block"; }
+function clearNewItemInputs(){
+    document.getElementById("newSr").value="";
+    document.getElementById("newName").value="";
+    document.getElementById("newQty").value="";
+    document.getElementById("newRateInput").value="";
+    document.getElementById("newRemain").value="";
+}
+
+// Add / Update Inventory
+async function addNewItem(){ 
+    const newItem = {
+        srNo:Number(document.getElementById("newSr").value),
+        namkeenVariety:document.getElementById("newName").value,
+        qty:Number(document.getElementById("newQty").value),
+        rate:Number(document.getElementById("newRateInput").value),
+        remainingQty:Number(document.getElementById("newRemain").value)
+    };
+    try{
+        await fetch("http://localhost:5050/inventory",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newItem)});
+        document.getElementById("newItemRow").style.display="none";
+        clearNewItemInputs();
+        loadInventory();
+    }catch(err){ console.error(err); }
+}
+
+async function updateItem() {
+    const index = document.getElementById("itemSelect").value;
+    const item = inventory[index];
+    const addQty = Number(document.getElementById("addQty").value) || 0;
+    const newRate = document.getElementById("newRate").value;
+    const updatedData = {
+        qty: item.qty + addQty,
+        remainingQty: item.remainingQty + addQty,
+        rate: newRate ? Number(newRate) : item.rate
+    };
+    try{
+        await fetch(`http://localhost:5050/inventory/${item._id}`,{
+            method:"PUT",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify(updatedData)
+        });
+        document.getElementById("addQty").value="";
+        document.getElementById("newRate").value="";
+        loadInventory();
+    }catch(err){ console.error(err); }
+}
+
+// RENDER
+function renderAll(){ renderTable(); renderCubes(); updateSummary(); }
+function renderTable() {
+    const body = document.getElementById("tableBody"); body.innerHTML="";
+    inventory.forEach(item=>{
+        body.innerHTML += `<tr>
+            <td>${item.srNo}</td>
+            <td>${item.namkeenVariety}</td>
+            <td>${item.qty}</td>
+            <td>₹ ${item.rate}</td>
+            <td>${item.remainingQty}</td>
+        </tr>`;
+    });
+}
+function renderCubes(){
+    const container = document.getElementById("cubeContainer"); container.innerHTML="";
+    inventory.forEach((item,index)=>{
+        container.innerHTML += `<div class="cube" style="background:${colors[index%colors.length]}">
+            <h4>SR No: ${item.srNo}</h4>
+            <p>${item.namkeenVariety}</p>
+            <p>Rate: ₹ ${item.rate}</p>
+            <p>Remaining: ${item.remainingQty}</p>
+        </div>`;
+    });
+}
+function updateSummary(){
+    let totalQty=0,totalValue=0;
+    inventory.forEach(item=>{ totalQty+=item.remainingQty; totalValue+=item.remainingQty*item.rate; });
+    document.getElementById("totalItems").innerText=inventory.length;
+    document.getElementById("totalQty").innerText=totalQty;
+    document.getElementById("totalValue").innerText="₹ "+totalValue;
+}
+
+// DOWNLOAD EXCEL
+function downloadExcel(){
+    const exportData = inventory.map(item=>({
+        srNo:item.srNo, namkeenVariety:item.namkeenVariety,
+        qty:item.qty, rate:item.rate, remainingQty:item.remainingQty,
+        stockValue:item.remainingQty*item.rate
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Inventory");
+    XLSX.writeFile(workbook,"updated_inventory.xlsx");
+}
+
+// SELL ITEMS
+function renderSellTable(){
+    const body = document.getElementById("sellTableBody"); body.innerHTML="";
+    inventory.forEach((item,index)=>{
+        body.innerHTML += `<tr>
+            <td><input type="checkbox" class="sellCheckbox" data-index="${index}"></td>
+            <td>${item.namkeenVariety}</td>
+            <td>${item.remainingQty}</td>
+            <td><input type="number" class="sellQty" data-index="${index}" min="0" max="${item.remainingQty}" placeholder="0"></td>
+        </tr>`;
+    });
+}
+async function sellItems(){
+    const checkboxes=document.querySelectorAll(".sellCheckbox");
+    for(const cb of checkboxes){
+        if(cb.checked){
+            const index=cb.dataset.index;
+            const sellInput=document.querySelector(`.sellQty[data-index='${index}']`);
+            const sellQty=Number(sellInput.value);
+            if(sellQty<=0){ alert("Enter valid sell quantity"); return; }
+            if(sellQty>inventory[index].remainingQty){ alert(`Cannot sell more than remaining qty of ${inventory[index].namkeenVariety}`); return; }
+            const item=inventory[index];
+            const updatedData={ remainingQty: item.remainingQty - sellQty };
+            try{
+                await fetch(`http://localhost:5050/inventory/${item._id}`,{
+                    method:"PUT",
+                    headers:{"Content-Type":"application/json"},
+                    body:JSON.stringify(updatedData)
+                });
+            }catch(err){ console.error(err); }
+        }
+    }
+    await loadInventory(); renderSellTable();
+}
+</script>
+</body>
+</html>
