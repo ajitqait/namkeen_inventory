@@ -18,7 +18,7 @@ header {
 header h1 {
     margin:0;
     font-weight:bold;
-    font-size:36px; /* large font size */
+    font-size:36px;
     color:white;
     white-space:nowrap;
 }
@@ -142,6 +142,9 @@ th{background:#1f2937;color:white;}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
+// -------------------- GLOBAL BASE URL --------------------
+const BASE_URL = "http://localhost:5050"; // change this once for hosting
+
 let inventory = [];
 let userRole = null;
 const colors = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6","#f97316"];
@@ -152,7 +155,7 @@ async function loginUser(){
     const password = document.getElementById("loginPassword").value;
 
     try{
-        const res = await fetch("http://localhost:5050/login",{
+        const res = await fetch(`${BASE_URL}/login`,{
             method:"POST",
             headers: {"Content-Type":"application/json"},
             body: JSON.stringify({ username, password })
@@ -197,7 +200,7 @@ function logoutUser() {
 // LOAD INVENTORY
 async function loadInventory() {
     try {
-        const res = await fetch("http://localhost:5050/inventory");
+        const res = await fetch(`${BASE_URL}/inventory`);
         inventory = await res.json();
         populateDropdown();
         renderAll();
@@ -234,7 +237,7 @@ async function addNewItem(){
         remainingQty:Number(document.getElementById("newRemain").value)
     };
     try{
-        await fetch("http://localhost:5050/inventory",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newItem)});
+        await fetch(`${BASE_URL}/inventory`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newItem)});
         document.getElementById("newItemRow").style.display="none";
         clearNewItemInputs();
         loadInventory();
@@ -252,7 +255,7 @@ async function updateItem() {
         rate: newRate ? Number(newRate) : item.rate
     };
     try{
-        await fetch(`http://localhost:5050/inventory/${item._id}`,{
+        await fetch(`${BASE_URL}/inventory/${item._id}`,{
             method:"PUT",
             headers:{"Content-Type":"application/json"},
             body:JSON.stringify(updatedData)
@@ -333,7 +336,7 @@ async function sellItems(){
             const item=inventory[index];
             const updatedData={ remainingQty: item.remainingQty - sellQty };
             try{
-                await fetch(`http://localhost:5050/inventory/${item._id}`,{
+                await fetch(`${BASE_URL}/inventory/${item._id}`,{
                     method:"PUT",
                     headers:{"Content-Type":"application/json"},
                     body:JSON.stringify(updatedData)
