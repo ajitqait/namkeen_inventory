@@ -21,54 +21,47 @@ router.get('/', auth(), async (req, res) => {
 /* ===============================
    ADD NEW ITEM (Admin Only)
 ================================ */
-router.post('/', auth('admin'), async (req, res) => {
-    try {
-        const existing = await Inventory.findOne({ srNo: req.body.srNo });
+const mongoose = require('mongoose');
 
-        if (existing) {
-            return res.status(400).json({ message: "SR No already exists" });
-        }
+const inventorySchema = new mongoose.Schema({
 
-        const item = new Inventory(req.body);
-        await item.save();
+    srNo:{ type:Number, required:true, unique:true },
+    namkeenVariety:{ type:String, required:true },
 
-        res.json(item);
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
+    qty:{ type:Number, required:true },
+    remainingQty:{ type:Number, required:true },
+
+    purchaseRate:{ type:Number, required:true },
+    profitPercent:{ type:Number, required:true },
+
+    sellRate:{ type:Number, required:true }
+
+},{timestamps:true});
+
+module.exports = mongoose.model('Inventory', inventorySchema);
 
 /* ===============================
    UPDATE ITEM (Admin Only)
 ================================ */
-router.put('/:id', auth('admin'), async (req, res) => {
-    try {
-        const item = await Inventory.findById(req.params.id);
+router.put('/:id', auth('admin'), async(req,res)=>{
 
-        if (!item) {
-            return res.status(404).json({ message: "Item not found" });
-        }
+    const item = await Inventory.findById(req.params.id);
+    if(!item) return res.status(404).json({message:"Not found"});
 
-        // Update fields only if provided
-        if (req.body.qty !== undefined)
-            item.qty = Number(req.body.qty);
+    item.qty = req.body.qty ?? item.qty;
+    item.remainingQty = req.body.remainingQty ?? item.remainingQty;
+    item.purchaseRate = req.body.purchaseRate ?? item.purchaseRate;
+    item.profitPercent = req.body.profitPercent ?? item.profitPercent;
 
-        if (req.body.remainingQty !== undefined)
-            item.remainingQty = Number(req.body.remainingQty);
+    /* AUTO SELL RATE */
+    item.sellRate = item.purchaseRate + (item.purchaseRate * item.profitPercent / 100);
 
-        if (req.body.rate !== undefined)
-            item.rate = Number(req.body.rate);
+    await item.save();
 
-        if (req.body.namkeenVariety !== undefined)
-            item.namkeenVariety = req.body.namkeenVariety;
-
-        await item.save();
-
-        res.json(item);
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
+    res.json(item);
 });
+
+module.exports = router;
 
 /* ===============================
    DELETE ITEM (Optional - Admin)
