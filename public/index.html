@@ -19,7 +19,8 @@
     input, select { padding:8px; margin: 5px; border: 1px solid #ccc; border-radius: 4px; }
     
     /* Buttons */
-    button { padding: 8px 16px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+    button { padding: 8px 16px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: opacity 0.2s; }
+    button:active { opacity: 0.7; }
     .btn-save { background:#16a34a; color:white; }
     .btn-add { background:#f59e0b; color:white; }
     .btn-delete { background:#ef4444; color:white; padding:5px 10px; font-size:12px; }
@@ -35,6 +36,17 @@
     .cube { padding:15px; border-radius:12px; color:white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
     .cube h4 { margin:0 0 10px 0; border-bottom:1px solid rgba(255,255,255,0.3); padding-bottom:5px; }
 
+    /* TOAST STYLE */
+    #toast {
+        visibility: hidden; min-width: 250px; color: #fff; text-align: center;
+        border-radius: 8px; padding: 16px; position: fixed; z-index: 1000;
+        left: 50%; bottom: 30px; transform: translateX(-50%);
+        font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    #toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
+    @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 30px; opacity: 1;} }
+    @keyframes fadeout { from {bottom: 30px; opacity: 1;} to {bottom: 0; opacity: 0;} }
+
     /* Hidden Sections */
     #dashboard, #adminSection, #valueCard, #actionHeader { display: none; }
     #loginPanel { max-width:400px; margin:100px auto; text-align:center; background:white; padding:30px; border-radius:10px; box-shadow:0 10px 25px rgba(0,0,0,0.1); }
@@ -46,6 +58,8 @@
     <h1 id="headerTitle">Namkeen Bazaar</h1>
     <button id="logoutBtn" style="display:none; background:#ef4444;" onclick="location.reload()">Logout</button>
 </header>
+
+<div id="toast"></div>
 
 <div id="loginPanel">
     <h2>Login</h2>
@@ -115,44 +129,68 @@
 </div>
 
 <script>
-// const API = "http://localhost:5050";
 const API = "https://namkeen-inventory.onrender.com";
 let inventory = [];
 let role = "";
 const colors = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6","#f97316"];
 
+// --- TOAST NOTIFICATION LOGIC ---
+function showToast(message, type = "success") {
+    const toast = document.getElementById("toast");
+    toast.innerText = message;
+    
+    // Set color based on type
+    if (type === "success") toast.style.backgroundColor = "#16a34a"; // Green
+    else if (type === "error") toast.style.backgroundColor = "#ef4444"; // Red
+    else toast.style.backgroundColor = "#333"; // Default dark
+    
+    toast.className = "show";
+    setTimeout(() => { toast.className = toast.className.replace("show", ""); }, 3000);
+}
+
 async function login() {
     const u = document.getElementById("user").value;
     const p = document.getElementById("pass").value;
-    const res = await fetch(`${API}/login`, {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({username: u, password: p})
-    });
-    
-    if(res.ok) {
-        const data = await res.json();
-        role = data.role;
-        document.getElementById("loginPanel").style.display = "none";
-        document.getElementById("dashboard").style.display = "block";
-        document.getElementById("logoutBtn").style.display = "block";
+    try {
+        const res = await fetch(`${API}/login`, {
+            method: "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({username: u, password: p})
+        });
         
-        if(role === "admin") {
-            document.getElementById("adminSection").style.display = "block";
-            document.getElementById("valueCard").style.display = "block";
-            document.getElementById("prHeader").style.display = "table-cell";
-            document.getElementById("srHeader").style.display = "table-cell";
-            document.getElementById("actionHeader").style.display = "table-cell";
+        if(res.ok) {
+            const data = await res.json();
+            role = data.role;
+            document.getElementById("loginPanel").style.display = "none";
+            document.getElementById("dashboard").style.display = "block";
+            document.getElementById("logoutBtn").style.display = "block";
+            
+            if(role === "admin") {
+                document.getElementById("adminSection").style.display = "block";
+                document.getElementById("valueCard").style.display = "block";
+                document.getElementById("prHeader").style.display = "table-cell";
+                document.getElementById("srHeader").style.display = "table-cell";
+                document.getElementById("actionHeader").style.display = "table-cell";
+            }
+            showToast("Login Successful! Welcome " + u);
+            loadData();
+        } else { 
+            showToast("Login failed. Check username/password", "error"); 
         }
-        loadData();
-    } else { alert("Login failed"); }
+    } catch (err) {
+        showToast("Server error. Please try again.", "error");
+    }
 }
 
 async function loadData() {
-    const res = await fetch(`${API}/inventory`);
-    inventory = await res.json();
-    populateSelect();
-    renderAll();
+    try {
+        const res = await fetch(`${API}/inventory`);
+        inventory = await res.json();
+        populateSelect();
+        renderAll();
+    } catch (err) {
+        showToast("Error loading inventory", "error");
+    }
 }
 
 function populateSelect() {
@@ -165,13 +203,10 @@ function populateSelect() {
 }
 
 function renderAll() {
-    // 1. Render Table
     const body = document.getElementById("inventoryBody");
     body.innerHTML = "";
-    // 2. Render Sale Table
     const sellBody = document.getElementById("sellTableBody");
     sellBody.innerHTML = "";
-    // 3. Render Cubes
     const cubeCont = document.getElementById("cubeContainer");
     cubeCont.innerHTML = "";
 
@@ -184,7 +219,6 @@ function renderAll() {
         totalQty += q;
         totalVal += (q * p);
 
-        // Inventory Table Row
         let row = `<tr>
             <td>${item.srNo}</td>
             <td>${item.namkeenVariety}</td>
@@ -195,7 +229,6 @@ function renderAll() {
         }
         body.innerHTML += row + "</tr>";
 
-        // Sale Table Row
         sellBody.innerHTML += `<tr>
             <td><input type="checkbox" class="sellCheck" data-index="${index}"></td>
             <td>${item.namkeenVariety}</td>
@@ -203,7 +236,6 @@ function renderAll() {
             <td><input type="number" class="sellVal" data-index="${index}" style="width:60px" placeholder="0"></td>
         </tr>`;
 
-        // Cube Card
         cubeCont.innerHTML += `<div class="cube" style="background:${colors[index % colors.length]}">
             <h4>SR ${item.srNo}</h4>
             <p><strong>${item.namkeenVariety}</strong></p>
@@ -219,32 +251,42 @@ function renderAll() {
 
 async function sellItems() {
     const checks = document.querySelectorAll(".sellCheck");
+    let processed = false;
     for(let cb of checks) {
         if(cb.checked) {
             const idx = cb.dataset.index;
             const sQty = Number(document.querySelectorAll(".sellVal")[idx].value);
             const item = inventory[idx];
             if(sQty > 0 && sQty <= item.remainingQty) {
-                await fetch(`${API}/inventory/${item._id}`, {
+                const res = await fetch(`${API}/inventory/${item._id}`, {
                     method: "PUT",
                     headers: {"Content-Type":"application/json"},
                     body: JSON.stringify({ remainingQty: item.remainingQty - sQty })
                 });
+                if(res.ok) processed = true;
+            } else if (sQty > item.remainingQty) {
+                showToast("Not enough stock for " + item.namkeenVariety, "error");
             }
         }
     }
-    loadData();
+    if(processed) {
+        showToast("Sale completed successfully!");
+        loadData();
+    }
 }
 
 async function updateItem() {
     const idx = document.getElementById("itemSelect").value;
-    if(idx === "") return;
+    if(idx === "") {
+        showToast("Please select an item first", "error");
+        return;
+    }
     const item = inventory[idx];
     const addS = Number(document.getElementById("addQty").value) || 0;
     const newR = document.getElementById("newPRate").value;
     const newP = document.getElementById("newProfit").value;
 
-    await fetch(`${API}/inventory/${item._id}`, {
+    const res = await fetch(`${API}/inventory/${item._id}`, {
         method: "PUT",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({
@@ -254,30 +296,62 @@ async function updateItem() {
             profitPercent: newP ? Number(newP) : item.profitPercent
         })
     });
-    loadData();
+    
+    if(res.ok) {
+        showToast("Item updated successfully!");
+        // Clear inputs
+        document.getElementById("addQty").value = "";
+        document.getElementById("newPRate").value = "";
+        document.getElementById("newProfit").value = "";
+        loadData();
+    } else {
+        showToast("Failed to update item", "error");
+    }
 }
 
 async function addItem() {
+    const nName = document.getElementById("nName").value;
+    if(!nName) {
+        showToast("Item name is required", "error");
+        return;
+    }
     const newItem = {
-        namkeenVariety: document.getElementById("nName").value,
+        namkeenVariety: nName,
         qty: Number(document.getElementById("nQty").value) || 0,
         remainingQty: Number(document.getElementById("nQty").value) || 0,
         purchaseRate: Number(document.getElementById("nPR").value) || 0,
         profitPercent: Number(document.getElementById("nPP").value) || 0
     };
-    await fetch(`${API}/inventory`, {
+    
+    const res = await fetch(`${API}/inventory`, {
         method: "POST",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify(newItem)
     });
-    document.getElementById("newForm").style.display = "none";
-    loadData();
+    
+    if(res.ok) {
+        showToast("New variety added successfully!");
+        document.getElementById("newForm").style.display = "none";
+        // Clear inputs
+        document.getElementById("nName").value = "";
+        document.getElementById("nQty").value = "";
+        document.getElementById("nPR").value = "";
+        document.getElementById("nPP").value = "";
+        loadData();
+    } else {
+        showToast("Error adding item", "error");
+    }
 }
 
 async function deleteItem(id) {
-    if(!confirm("Delete item?")) return;
-    await fetch(`${API}/inventory/${id}`, { method: "DELETE" });
-    loadData();
+    if(!confirm("Are you sure you want to delete this item?")) return;
+    const res = await fetch(`${API}/inventory/${id}`, { method: "DELETE" });
+    if(res.ok) {
+        showToast("Item deleted successfully", "error");
+        loadData();
+    } else {
+        showToast("Failed to delete", "error");
+    }
 }
 </script>
 </body>
